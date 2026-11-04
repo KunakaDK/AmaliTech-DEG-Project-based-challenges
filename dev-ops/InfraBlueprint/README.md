@@ -145,15 +145,30 @@ terraform plan -var-file="example.tfvars"
 
 ---
 
-## 6. Bonus (Optional)
+## Bonus: Staging and Production Workspaces
 
-Pick **one** if you want to go further:
+This configuration uses Terraform workspaces to deploy staging and production
+from the same code. Each workspace has separate Terraform state, and resources
+that require account-wide unique names (such as the RDS instance, subnet group,
+and EC2 IAM role/profile) include the workspace name. Resources are also tagged
+with the workspace as their environment.
 
-- **Modules:** Refactor your code to use reusable modules (e.g., a `networking` module and a `compute` module).
-- **Multi-environment:** Use Terraform workspaces or separate `.tfvars` files to support a `staging` and `production` environment from the same codebase.
-- **RDS snapshot:** Add a Terraform resource that takes an automated RDS snapshot before any `terraform destroy` is run.
+Create and select each workspace from the `infra/` directory:
 
-Describe what you added and why in your README.
+```bash
+terraform workspace new staging
+terraform plan -var-file="../example.tfvars" \
+  -var="s3_bucket_name=<globally-unique-staging-bucket>"
+
+terraform workspace new production
+terraform plan -var-file="../example.tfvars" \
+  -var="s3_bucket_name=<globally-unique-production-bucket>"
+```
+
+Provide a different globally unique S3 bucket name for each environment. Use the
+same workspace and variable values when applying, and confirm the selected
+workspace with `terraform workspace show` before running `terraform apply` or
+`terraform destroy`.
 
 ---
 
@@ -195,3 +210,32 @@ Your final `README.md` must replace these instructions and cover:
 - [ ] This README has been replaced with your own documentation.
 - [ ] Commit history shows progress over time (not a single upload commit).
 - [ ] GitHub repository is set to **Public**.
+
+## Terraform S3 Backend Setup
+
+The Terraform S3 backend stores state in a bucket that must be created before
+initialization. Choose a globally unique bucket name in the same AWS region you
+will use for this deployment. Enable bucket versioning and block all public
+access on the state bucket; do not use the application assets bucket for state.
+
+To create the backend bucket in the AWS Console, open **S3**, create a general
+purpose bucket with your unique name in the deployment region, and leave **Block
+all public access** enabled. After creation, open the bucket's **Properties**
+and enable **Bucket Versioning**. Keep the bucket private and use AWS credentials
+that are permitted to access it.
+
+The backend configuration sets the state key to
+`vela-payments/terraform.tfstate`. The bucket name and region are supplied when
+initializing because Terraform backend settings cannot reference input variables:
+
+```bash
+cd infra
+terraform init \
+  -backend-config="bucket=<your-terraform-state-bucket>" \
+  -backend-config="region=<your-aws-region>"
+terraform plan -var-file="../example.tfvars"
+```
+
+Use AWS credentials with access to the state bucket and the resources in this
+configuration. The bucket name and region passed to `terraform init` must match
+the bucket created for this purpose and the AWS region where it resides.
