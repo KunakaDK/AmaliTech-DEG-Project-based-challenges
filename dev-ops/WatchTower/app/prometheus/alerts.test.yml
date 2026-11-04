@@ -1,0 +1,53 @@
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'probe_success{job="service-health", service="order-service"}'
+        values: "1 0 0"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: ServiceDown
+        exp_alerts:
+          - exp_labels:
+              job: service-health
+              service: order-service
+              severity: critical
+            exp_annotations:
+              summary: "Health check failing for order-service"
+              description: "The /health endpoint for order-service has returned a non-200 response for more than 1 minute."
+
+  - interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="order-service", status="200"}'
+        values: "0 100 200 300 400 500"
+      - series: 'http_requests_total{job="order-service", status="500"}'
+        values: "0 10 20 30 40 50"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: HighErrorRate
+        exp_alerts:
+          - exp_labels:
+              job: order-service
+              severity: warning
+            exp_annotations:
+              summary: "High HTTP 5xx error rate for order-service"
+              description: "More than 5% of requests to order-service returned 5xx responses over the last 5 minutes."
+
+  - interval: 1m
+    input_series:
+      - series: 'up{job="order-service"}'
+        values: "1 0 0 0"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: ServiceNotScraping
+        exp_alerts:
+          - exp_labels:
+              job: order-service
+              severity: warning
+            exp_annotations:
+              summary: "Prometheus cannot scrape order-service"
+              description: "Prometheus has not successfully scraped metrics from order-service for more than 2 minutes."

@@ -1,21 +1,103 @@
+name: ${COMPOSE_PROJECT_NAME:-watchtower}
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   order-service:
     build: ./order-service
     ports:
-      - "3001:3001"
+      - "${ORDER_SERVICE_PORT}:${ORDER_SERVICE_PORT}"
     environment:
-      - PORT=3001
+      PORT: ${ORDER_SERVICE_PORT}
+    container_name: ${ORDER_SERVICE_NAME}
+    networks:
+      default:
+        aliases:
+          - ${ORDER_SERVICE_NAME}
+    logging: *default-logging
 
   tracking-service:
     build: ./tracking-service
     ports:
-      - "3002:3002"
+      - "${TRACKING_SERVICE_PORT}:${TRACKING_SERVICE_PORT}"
     environment:
-      - PORT=3002
+      PORT: ${TRACKING_SERVICE_PORT}
+    container_name: ${TRACKING_SERVICE_NAME}
+    networks:
+      default:
+        aliases:
+          - ${TRACKING_SERVICE_NAME}
+    logging: *default-logging
 
   notification-service:
     build: ./notification-service
     ports:
-      - "3003:3003"
+      - "${NOTIFICATION_SERVICE_PORT}:${NOTIFICATION_SERVICE_PORT}"
     environment:
-      - PORT=3003
+      PORT: ${NOTIFICATION_SERVICE_PORT}
+    container_name: ${NOTIFICATION_SERVICE_NAME}
+    networks:
+      default:
+        aliases:
+          - ${NOTIFICATION_SERVICE_NAME}
+    logging: *default-logging
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./prometheus/alerts.test.yml:/etc/prometheus/alerts.test.yml:ro
+    logging: *default-logging
+    depends_on:
+      - order-service
+      - tracking-service
+      - notification-service
+      - blackbox-exporter
+      - alertmanager
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:latest
+    volumes:
+      - ./prometheus/blackbox.yml:/etc/blackbox_exporter/blackbox.yml:ro
+    command:
+      - --config.file=/etc/blackbox_exporter/blackbox.yml
+    logging: *default-logging
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    ports:
+      - "127.0.0.1:9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+    logging: *default-logging
+    depends_on:
+      - alert-receiver
+
+  alert-receiver:
+    build: ./alert-receiver
+    logging: *default-logging
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    logging: *default-logging
+    depends_on:
+      - prometheus
+
+networks:
+  default:
+    name: ${COMPOSE_PROJECT_NAME:-watchtower}-network

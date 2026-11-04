@@ -1,0 +1,17 @@
+route:
+  receiver: discard
+  group_by: [alertname, service, job]
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 4h
+  routes:
+    - receiver: critical-webhook
+      matchers:
+        - severity="critical"
+
+receivers:
+  - name: discard
+  - name: critical-webhook
+    webhook_configs:
+      - url: http://alert-receiver:9094/alerts
+        send_resolved: true

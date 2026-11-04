@@ -105,31 +105,54 @@ Requirements:
 - Each rule must include a human-readable `summary` and `description` annotation.
 - Document in your README how you tested that each alert fires correctly.
 
+#### Alert validation
+
+The `promtool` rule test suite uses synthetic samples to exercise all three firing conditions. Start the stack and run:
+
+```bash
+docker compose exec prometheus promtool test rules /etc/prometheus/alerts.test.yml
+```
+
+The suite supplies a failed `/health` probe for over one minute for `ServiceDown`, five-minute request counters with a 9.1% 5xx rate for `HighErrorRate`, and a failed service scrape lasting over two minutes for `ServiceNotScraping`. A successful run confirms each alert fires with its expected labels and annotations.
+
+To confirm the health probe and scrape alerts against a real service, stop one app service, for example `docker compose stop order-service`, and inspect `http://localhost:9090/alerts`. `ServiceDown` should fire after the `/health` probe has failed for one minute and `ServiceNotScraping` after its `/metrics` scrape has failed for two minutes. Restore it with `docker compose start order-service`.
+
 ---
 
 ### Part 5 - Structured Logging
 
-**Deliverable:** Documentation in your README.
+All Compose containers use Docker's `json-file` logging driver with rotation capped at three 10 MB files per container.
 
-Each service already logs to stdout. Your task:
+From `app/`, view live logs from all containers:
 
-- Configure the Docker Compose log driver to write logs in JSON format.
-- Show a command a developer can run to:
-  1. View live logs from all services at once.
-  2. Filter logs to show only errors from a specific service.
-- Document both commands in your README with example output.
+```bash
+docker compose logs --follow --no-color --no-log-prefix
+```
+
+Filter the order service's JSON application logs to errors (requires `jq`):
+
+```bash
+docker compose logs --follow --no-color --no-log-prefix order-service \
+  | jq -c 'fromjson? | select(.level == "error")'
+```
+
+Example filtered output:
+
+```json
+{"level":"error","service":"order-service","msg":"example error"}
+```
+
+The supplied service code currently emits informational JSON logs, not error-level logs; the filter will therefore show output only when an error-level record is produced.
 
 ---
 
-## 4. Bonus (Optional)
+## 4. Bonus: Alertmanager
 
-Pick **one** if you want to go further:
+Alertmanager is included to route `critical` alerts to a webhook receiver. This is the most useful of the listed bonuses for incident response: a critical health alert is actively delivered rather than only being visible on a dashboard. `warning` alerts are not sent to the webhook.
 
-- **Alertmanager:** Route `critical` alerts to a webhook or email using [Alertmanager](https://prometheus.io/docs/alerting/latest/alertmanager/).
-- **Loki:** Add [Grafana Loki](https://grafana.com/oss/loki/) to the stack for log aggregation and build a Logs panel in your dashboard.
-- **Uptime graph:** Add a panel to your Grafana dashboard that visualises service uptime percentage over the past 24 hours.
+Prometheus forwards firing alerts to Alertmanager, which POSTs critical alert notifications to the internal `alert-receiver` service. The receiver logs the alert name, status, service, and summary as JSON; it does not expose a host port or log the full alert payload. Alertmanager's UI is available on localhost at `http://localhost:9093`.
 
-Describe what you added and why in your README.
+The receiver is a local demonstration endpoint. For real incident notification, replace its endpoint in `app/alertmanager/alertmanager.yml` with an organization-managed, authenticated HTTPS webhook. Do not commit credentials or tokens.
 
 ---
 

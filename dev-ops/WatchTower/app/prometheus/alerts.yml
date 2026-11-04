@@ -1,0 +1,33 @@
+groups:
+  - name: watchtower-alerts
+    rules:
+      - alert: ServiceDown
+        expr: probe_success{job="service-health"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Health check failing for {{ $labels.service }}"
+          description: "The /health endpoint for {{ $labels.service }} has returned a non-200 response for more than 1 minute."
+
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum by (job) (rate(http_requests_total{job=~"order-service|tracking-service|notification-service", status=~"5.."}[5m]))
+            /
+            sum by (job) (rate(http_requests_total{job=~"order-service|tracking-service|notification-service"}[5m]))
+          ) > 0.05
+        labels:
+          severity: warning
+        annotations:
+          summary: "High HTTP 5xx error rate for {{ $labels.job }}"
+          description: "More than 5% of requests to {{ $labels.job }} returned 5xx responses over the last 5 minutes."
+
+      - alert: ServiceNotScraping
+        expr: up{job=~"order-service|tracking-service|notification-service"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus cannot scrape {{ $labels.job }}"
+          description: "Prometheus has not successfully scraped metrics from {{ $labels.job }} for more than 2 minutes."
