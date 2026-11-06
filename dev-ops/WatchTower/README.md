@@ -1,201 +1,263 @@
-# WatchTower
+# WatchTower — Service Monitoring and Observability
 
-This challenge is designed to test your understanding of observability, one of the most critical and often overlooked areas of DevOps engineering.
+## Overview
 
----
+I set up WatchTower as a local observability environment for the three Reyla Logistics backend services supplied with the challenge: `order-service`, `tracking-service`, and `notification-service`.
 
-## 1. Business Context
+I used Docker Compose to run the environment and connected the following tools to monitor service availability and application metrics, view the information in Grafana, and route critical alerts through Alertmanager:
 
-**Client:** Reyla Logistics
-**Industry:** Last-mile delivery operations
+- **Prometheus** to collect metrics from the three application services.
+- **Blackbox Exporter** to check each service's HTTP `/health` endpoint.
+- **Grafana** to display service status, request rates, and HTTP 5xx error rates.
+- **Alertmanager** to receive Prometheus alerts and route critical alerts to a local webhook receiver.
+- **Docker JSON logging** to collect container output and rotate log files.
 
-### The Problem
+## Architecture
 
-Reyla runs three backend services: an order service, a tracking service, and a notification service. Over the past month, each of them has gone down at least once. In every case, Reyla found out from an angry customer, not from their own team.
+```mermaid
+flowchart LR
+    subgraph Applications[Application services supplied with the challenge]
+        O[Order service<br/>3001]
+        T[Tracking service<br/>3002]
+        N[Notification service<br/>3003]
+    end
 
-They have no dashboards, no alerting, and their logs are scattered across three separate terminal windows that someone has to be watching to catch errors.
+    B[Blackbox Exporter]
+    P[Prometheus<br/>9090]
+    G[Grafana<br/>3000]
+    A[Alertmanager<br/>9093]
+    R[Webhook receiver]
 
-### Your Role
+    O -->|/metrics| P
+    T -->|/metrics| P
+    N -->|/metrics| P
 
-You are joining as their DevOps engineer. The services are already written. Your job is to **wire up a full observability stack**, covering metrics collection, dashboards, and alerting, so the team can see what is happening inside their system at any time and get notified before customers do.
+    B -->|HTTP check: /health| O
+    B -->|HTTP check: /health| T
+    B -->|HTTP check: /health| N
+    B -->|probe_success| P
 
----
-
-## 2. The System
-
-Three small services are provided in the [`app/`](./app/) directory:
-
-| Service                | Port | What it does                        |
-| ---------------------- | ---- | ----------------------------------- |
-| `order-service`        | 3001 | Creates and lists orders            |
-| `tracking-service`     | 3002 | Updates and returns delivery status |
-| `notification-service` | 3003 | Logs notification events            |
-
-Each service has a `/health` endpoint and a `/metrics` endpoint that exposes [Prometheus-compatible metrics](https://prometheus.io/docs/instrumenting/exposition_formats/).
-
-Run all three locally:
-
-```bash
-docker compose up --build
+    P -->|PromQL queries| G
+    P -->|Firing alerts| A
+    A -->|Critical alerts| R
 ```
 
-Do not change the business logic of any service. You may add environment variable support or adjust how metrics are exposed if needed.
+I placed the containers on a shared Docker network. This allows the monitoring containers to reach the application services by their Compose service names. I also used environment variables for the service names and ports, with `.env.example` provided as the configuration template.
 
----
+## Repository layout
 
-## 3. The Assignment
+The main configuration files I added or configured are:
 
-### Part 1 - Unified Local Environment
+```text
+WatchTower/
+├── app/
+│   ├── docker-compose.yml
+│   ├── .env.example
+│   ├── prometheus.yml
+│   ├── prometheus/
+│   │   ├── alerts.yml
+│   │   ├── alerts.test.yml
+│   │   └── config-renderer/
+│   │       ├── Dockerfile
+│   │       └── render-config.js
+│   ├── grafana/
+│   │   ├── dashboards/
+│   │   │   └── watchtower-overview.json
+│   │   └── provisioning/
+│   ├── alertmanager/
+│   │   └── alertmanager.yml
+│   └── docs/
+│       ├── watchtower-dashboard.png
+│       └── order-service-down-test.png
+```
 
-**Deliverable:** A `docker-compose.yml` that runs the entire stack together.
+The three application services are part of the supplied challenge files under `app/`; the configuration above is the observability setup I added around them.
 
-Requirements:
+## Running the environment
 
-- All three app services must start with `docker compose up`.
-- Each service must have its port mapped to the host for local testing.
-- Services must be on a shared Docker network so they can communicate by service name.
-- All configuration (ports, service names) must be passed via environment variables from an `.env` file. Include a `.env.example` with placeholder values.
+### Requirements
 
----
+- Docker
+- Docker Compose v2
+- `jq` (optional; only needed for the log-filtering command)
 
-### Part 2 - Metrics Collection
+### Start the containers
 
-**Deliverable:** Prometheus added to the `docker-compose.yml` and configured to scrape all three services.
+From the repository root, I run:
 
-Requirements:
+```bash
+cd dev-ops/WatchTower/app
+cp .env.example .env
+docker compose up --build -d
+docker compose ps
+```
 
-- Add a **Prometheus** container to your Compose file.
-- Write a `prometheus.yml` configuration file that scrapes the `/metrics` endpoint of each service every 15 seconds.
-- Prometheus UI must be accessible at `http://localhost:9090`.
-- Verify it works: the Prometheus "Targets" page (`/targets`) must show all three services as **UP**.
+In PowerShell, I copy the environment template with:
 
----
+```powershell
+Copy-Item .env.example .env
+```
 
-### Part 3 - Dashboards
+The `.env` file contains the service names and ports used by Compose and Prometheus. A small one-shot config-renderer container substitutes these values into `prometheus.yml` before Prometheus starts, because Prometheus itself does not expand environment variables in its configuration. I keep the local `.env` out of Git and commit `.env.example` instead.
 
-**Deliverable:** Grafana added to the Compose stack with a pre-built dashboard.
+### Local addresses
 
-Requirements:
+| Component | Address | What I use it for |
+|---|---|---|
+| Order service | <http://localhost:3001> | Order application |
+| Tracking service | <http://localhost:3002> | Tracking application |
+| Notification service | <http://localhost:3003> | Notification application |
+| Prometheus | <http://localhost:9090> | Metrics and alert rules |
+| Prometheus targets | <http://localhost:9090/targets> | Inspect scrape target status |
+| Prometheus alerts | <http://localhost:9090/alerts> | Inspect alert states |
+| Grafana | <http://localhost:3000> | Open the WatchTower dashboard |
+| Alertmanager | <http://localhost:9093> | Inspect received alerts |
 
-- Add a **Grafana** container to your Compose file. It must use Prometheus as its data source.
-- Grafana must be accessible at `http://localhost:3000`.
-- Create a dashboard (exported as JSON in `grafana/dashboards/`) that displays **at minimum**:
-  - HTTP request rate for each service
-  - Error rate (5xx responses) for each service
-  - Current health status of each service
-- The dashboard must load automatically when Grafana starts, with no manual import steps. Use [Grafana provisioning](https://grafana.com/docs/grafana/latest/administration/provisioning/) to achieve this.
+The application health endpoints are `/health` on ports 3001, 3002, and 3003. When a service is healthy, its endpoint returns a JSON response with `"status":"ok"`.
 
----
+For the initial Grafana login, the configured default credentials are `admin` / `admin`. Grafana may ask me to change the password after signing in.
 
-### Part 4 - Alerting
+### Startup verification
 
-**Deliverable:** Alert rules defined in a `prometheus/alerts.yml` file.
+I started the Compose stack and checked its containers and endpoints. The three application `/health` endpoints and Grafana's health endpoint returned HTTP 200. Prometheus's health endpoint also returned HTTP 200, and its targets API reported all three application metrics targets and all three Blackbox health probes as `UP`. Prometheus's alerts API returned an empty alert list while the services were healthy.
 
-Write alerting rules for the following conditions:
+## Prometheus metrics and health checks
 
-| Alert Name           | Condition                                                                  | Severity |
-| -------------------- | -------------------------------------------------------------------------- | -------- |
-| `ServiceDown`        | Any service's `/health` returns non-200 for more than 1 minute             | critical |
-| `HighErrorRate`      | More than 5% of requests result in 5xx errors over a 5-minute window       | warning  |
-| `ServiceNotScraping` | Prometheus has not received metrics from a service for more than 2 minutes | warning  |
+I configured Prometheus to scrape the `/metrics` endpoint of each application service every **15 seconds**. The template is in `app/prometheus.yml`; Compose passes the `.env` values to the config-renderer, which renders the final configuration into a shared volume before Prometheus starts.
 
-Requirements:
+I also configured Blackbox Exporter to send HTTP probes to each application's `/health` endpoint. Prometheus collects the resulting `probe_success` metric. These checks give me two separate views of the services:
 
-- Rules must be loaded into Prometheus via the `prometheus.yml` config.
-- Each rule must include a human-readable `summary` and `description` annotation.
-- Document in your README how you tested that each alert fires correctly.
+- The application metrics target indicates whether Prometheus can scrape `/metrics`.
+- The Blackbox probe indicates whether the service responds successfully to an HTTP health check.
 
-#### Alert validation
+I can inspect the scrape targets at <http://localhost:9090/targets>. The three application metrics targets should show `UP` while Prometheus can successfully scrape them.
 
-The `promtool` rule test suite uses synthetic samples to exercise all three firing conditions. Start the stack and run:
+## Grafana dashboard
+
+I configured Grafana to use Prometheus as its data source. I also set up Grafana provisioning so the dashboard is loaded automatically when Grafana starts; it does not need to be imported manually.
+
+The dashboard configuration is stored in:
+
+- `app/grafana/dashboards/watchtower-overview.json`
+- `app/grafana/provisioning/`
+
+The dashboard is named **WatchTower Overview** and contains five panels:
+
+1. **Order Service Status** — displays the result of the Order service's `/health` probe.
+2. **Tracking Service Status** — displays the result of the Tracking service's `/health` probe.
+3. **Notification Service Status** — displays the result of the Notification service's `/health` probe.
+4. **HTTP Request Rate by Service** — plots the request rate for each service using a five-minute rate window.
+5. **HTTP 5xx Error Rate by Service** — displays the percentage of HTTP 5xx responses relative to total requests for each service, also using a five-minute rate window.
+
+### Dashboard while services are running
+
+I started the stack and opened the provisioned dashboard in Grafana. In this capture, all three service status panels display **UP**, and the request-rate panel shows data for the three services.
+
+![WatchTower Overview dashboard with all three services UP](./app/docs/watchtower-dashboard.png)
+
+## Prometheus alert rules
+
+I added the alert rules in `app/prometheus/alerts.yml` and configured Prometheus to load them through `app/prometheus.yml`. Each rule includes a human-readable `summary` and `description` annotation.
+
+| Alert | Condition | Severity |
+|---|---|---|
+| `ServiceDown` | A service's `/health` probe returns a non-200 result for more than 1 minute | `critical` |
+| `HighErrorRate` | More than 5% of requests return HTTP 5xx responses over a 5-minute window | `warning` |
+| `ServiceNotScraping` | Prometheus cannot scrape a service's `/metrics` endpoint for more than 2 minutes | `warning` |
+
+### Rule test configuration
+
+I included a `promtool` test file with synthetic samples for the three alert conditions. With the stack running, I can execute the test from the `app/` directory using:
 
 ```bash
 docker compose exec prometheus promtool test rules /etc/prometheus/alerts.test.yml
 ```
 
-The suite supplies a failed `/health` probe for over one minute for `ServiceDown`, five-minute request counters with a 9.1% 5xx rate for `HighErrorRate`, and a failed service scrape lasting over two minutes for `ServiceNotScraping`. A successful run confirms each alert fires with its expected labels and annotations.
+I ran the rule test in the Prometheus container. It returned `SUCCESS`. The test cases cover a failed health probe for `ServiceDown`, a 5xx rate above 5% for `HighErrorRate`, and a failed metrics scrape for `ServiceNotScraping`. This verifies the alert rules against synthetic samples; it does not replace checking a live outage.
 
-To confirm the health probe and scrape alerts against a real service, stop one app service, for example `docker compose stop order-service`, and inspect `http://localhost:9090/alerts`. `ServiceDown` should fire after the `/health` probe has failed for one minute and `ServiceNotScraping` after its `/metrics` scrape has failed for two minutes. Restore it with `docker compose start order-service`.
+### Checking a service failure
 
----
+I checked the dashboard and alert behavior during a stopped-service test. From the `app/` directory, I ran:
 
-### Part 5 - Structured Logging
+```bash
+docker compose stop order-service
+```
 
-All Compose containers use Docker's `json-file` logging driver with rotation capped at three 10 MB files per container.
+The terminal confirmed that the `order-service` container stopped. The Grafana capture shows the Order Service Status panel changing to **DOWN**, while the Tracking Service Status panel remains **UP**.
 
-From `app/`, view live logs from all containers:
+![Order service stop test showing the Order Service as DOWN](./app/docs/order-service-down-test.png)
+
+This confirms that the dashboard reflects the failed Order service health check. During a separate live check, I left the service stopped for 140 seconds and queried Prometheus and Alertmanager:
+
+- `ServiceDown` fired after the `/health` probe remained failed for over 1 minute.
+- `ServiceNotScraping` fired after Prometheus could not scrape `/metrics` for over 2 minutes.
+- Alertmanager showed the critical `ServiceDown` alert, and the receiver logs contained its notification.
+
+I then restarted the service:
+
+```bash
+docker compose start order-service
+```
+
+After recovery, the Order service's `/health` endpoint returned HTTP 200, and a later Prometheus alert check showed neither outage alert firing.
+
+The supplied services do not include a route intended to return HTTP 5xx responses. I therefore included synthetic test data for `HighErrorRate` rather than claiming to have triggered it using live application traffic.
+
+## Structured logging
+
+I configured the Compose containers to use Docker's `json-file` logging driver, with rotation limited to **three 10 MB files per container**.
+
+To follow the output from all containers, I run:
 
 ```bash
 docker compose logs --follow --no-color --no-log-prefix
 ```
 
-Filter the order service's JSON application logs to errors (requires `jq`):
+To filter the Order service's JSON application logs for error-level records, I use `jq`:
 
 ```bash
-docker compose logs --follow --no-color --no-log-prefix order-service \
-  | jq -c 'fromjson? | select(.level == "error")'
+docker compose logs --follow --no-color --no-log-prefix order-service |
+  jq -c 'select(.level == "error")'
 ```
 
-Example filtered output:
+Docker Compose outputs each application log as a JSON object, so the filter selects the `level` field directly. I verified that it selects an error-level JSON record; the current service logs are informational, so filtering the recent logs produced no matches.
+
+An example of the expected filtered record is:
 
 ```json
 {"level":"error","service":"order-service","msg":"example error"}
 ```
 
-The supplied service code currently emits informational JSON logs, not error-level logs; the filter will therefore show output only when an error-level record is produced.
+The supplied application services currently emit informational JSON logs. The filter will therefore display a record only when an error-level log is produced.
 
----
+I verified that `docker compose logs` displays the services' JSON application records and confirmed the JSON logging driver and rotation settings in the resolved Compose configuration. I installed `jq` 1.8.2 and tested the filter: a synthetic error-level record was selected, while recent service logs produced no matches because they contain only informational records.
 
-## 4. Bonus: Alertmanager
+## Alertmanager integration
 
-Alertmanager is included to route `critical` alerts to a webhook receiver. This is the most useful of the listed bonuses for incident response: a critical health alert is actively delivered rather than only being visible on a dashboard. `warning` alerts are not sent to the webhook.
+For the bonus part, I configured Alertmanager to route alerts with the `critical` severity to an internal `alert-receiver` webhook service. Prometheus forwards firing alerts to Alertmanager, and warning alerts are not routed to this receiver.
 
-Prometheus forwards firing alerts to Alertmanager, which POSTs critical alert notifications to the internal `alert-receiver` service. The receiver logs the alert name, status, service, and summary as JSON; it does not expose a host port or log the full alert payload. Alertmanager's UI is available on localhost at `http://localhost:9093`.
+The receiver logs selected alert details as JSON: the alert status, alert name, affected service, and summary. It remains on the internal Docker network, does not expose a host port, and does not log the full alert payload. The Alertmanager interface is available at <http://localhost:9093>.
 
-The receiver is a local demonstration endpoint. For real incident notification, replace its endpoint in `app/alertmanager/alertmanager.yml` with an organization-managed, authenticated HTTPS webhook. Do not commit credentials or tokens.
+This receiver is a local demonstration endpoint, not an external paging or email service. I verified that Alertmanager delivered the critical `ServiceDown` notification to it during the live outage test. A production integration would use an organization-managed, authenticated HTTPS webhook. Credentials and tokens should not be committed to the repository.
 
----
+## Stopping the environment
 
-## 5. Documentation Requirements
+From the `app/` directory, I stop and remove the containers and network with:
 
-Your final `README.md` must replace these instructions and cover:
+```bash
+docker compose down
+```
 
-1. **Architecture diagram** - show the full observability stack (services → Prometheus → Grafana → alerts).
-2. **Setup instructions** - how to start the stack and verify everything is working.
-3. **Dashboard walkthrough** - a screenshot and short description of each panel.
-4. **Alert testing** - how you confirmed each alert fires correctly.
-5. **Log commands** - the two log commands from Part 5 with example output.
+## Implementation summary
 
----
+The observability environment I configured includes:
 
-## 6. Submission Instructions
+- A Docker Compose setup for the provided application services and monitoring components.
+- Prometheus scraping the three `/metrics` endpoints every 15 seconds.
+- Blackbox Exporter probes for the three `/health` endpoints.
+- A provisioned Grafana dashboard with service status, request-rate, and 5xx error-rate panels.
+- Three Prometheus alert rules with summaries and descriptions.
+- Docker JSON logging with file rotation and commands for viewing and filtering application logs.
+- An Alertmanager route for critical alerts to an internal webhook receiver.
 
-1. **Fork** this repository.
-2. Complete all five parts in your fork.
-3. Replace this README with your own documentation as outlined above.
-4. Submit your repo link via the [online form](https://forms.cloud.microsoft/e/f3FF83LVz3).
-
----
-
-## ⚠️ Pre-Submission Checklist
-
-### Stack
-
-- [ ] `docker compose up --build` starts all services, Prometheus, and Grafana with no errors.
-- [ ] A `.env.example` file is committed; the real `.env` is not.
-- [ ] Prometheus `/targets` shows all three services as **UP**.
-- [ ] Grafana dashboard loads automatically without manual import.
-
-### Alerts
-
-- [ ] All three alert rules are present in `prometheus/alerts.yml`.
-- [ ] Each rule has a `summary` and `description` annotation.
-- [ ] README explains how you tested each alert.
-
-### Documentation
-
-- [ ] Architecture diagram is included.
-- [ ] Both log commands are documented with example output.
-- [ ] This README has been replaced with your own documentation.
-- [ ] Commit history shows progress over time (not a single upload commit).
-- [ ] GitHub repository is set to **Public**.
+The screenshots document the dashboard with all three services healthy and the dashboard response when the Order service is stopped. The synthetic `promtool` rule test passed, all six Prometheus targets were up during startup verification, and the live `ServiceDown` and `ServiceNotScraping` alerts fired during the outage check. Alertmanager delivered the critical notification to the local receiver.

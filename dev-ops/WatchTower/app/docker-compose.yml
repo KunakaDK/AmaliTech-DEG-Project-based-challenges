@@ -50,17 +50,41 @@ services:
     image: prom/prometheus:latest
     ports:
       - "9090:9090"
+    command:
+      - --config.file=/etc/prometheus/generated/prometheus.yml
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-config:/etc/prometheus/generated:ro
       - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
       - ./prometheus/alerts.test.yml:/etc/prometheus/alerts.test.yml:ro
     logging: *default-logging
     depends_on:
-      - order-service
-      - tracking-service
-      - notification-service
-      - blackbox-exporter
-      - alertmanager
+      prometheus-config:
+        condition: service_completed_successfully
+      order-service:
+        condition: service_started
+      tracking-service:
+        condition: service_started
+      notification-service:
+        condition: service_started
+      blackbox-exporter:
+        condition: service_started
+      alertmanager:
+        condition: service_started
+
+  prometheus-config:
+    build: ./prometheus/config-renderer
+    environment:
+      ORDER_SERVICE_NAME: ${ORDER_SERVICE_NAME}
+      ORDER_SERVICE_PORT: ${ORDER_SERVICE_PORT}
+      TRACKING_SERVICE_NAME: ${TRACKING_SERVICE_NAME}
+      TRACKING_SERVICE_PORT: ${TRACKING_SERVICE_PORT}
+      NOTIFICATION_SERVICE_NAME: ${NOTIFICATION_SERVICE_NAME}
+      NOTIFICATION_SERVICE_PORT: ${NOTIFICATION_SERVICE_PORT}
+    volumes:
+      - ./prometheus.yml:/template/prometheus.yml:ro
+      - prometheus-config:/output
+    logging: *default-logging
+    restart: "no"
 
   blackbox-exporter:
     image: prom/blackbox-exporter:latest
@@ -101,3 +125,6 @@ services:
 networks:
   default:
     name: ${COMPOSE_PROJECT_NAME:-watchtower}-network
+
+volumes:
+  prometheus-config:

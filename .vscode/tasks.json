@@ -1,0 +1,59 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Start WatchTower observability stack",
+			"type": "shell",
+			"command": "docker",
+			"args": [
+				"compose",
+				"--project-directory",
+				"dev-ops/WatchTower/app",
+				"--env-file",
+				"dev-ops/WatchTower/app/.env",
+				"-f",
+				"dev-ops/WatchTower/app/docker-compose.yml",
+				"up",
+				"--build",
+				"-d"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Verify jq application log filter",
+			"type": "shell",
+			"command": "Set-Location 'D:\\Desktop\\AmaliTech-DEG-Project-based-challenges\\dev-ops\\WatchTower\\app'; $jq = Join-Path $env:LOCALAPPDATA 'Programs\\jq\\jq.exe'; if (-not (Test-Path $jq)) { throw 'jq executable was not found at the installed user path.' }; Write-Output 'jq version:'; & $jq --version; if ($LASTEXITCODE -ne 0) { throw 'jq version check failed.' }; Write-Output 'Filter syntax example:'; '{\"level\":\"error\",\"service\":\"order-service\",\"msg\":\"example error\"}' | & $jq -c 'fromjson? | select(.level == \"error\")'; if ($LASTEXITCODE -ne 0) { throw 'jq filter example failed.' }; Write-Output 'Recent order-service logs filtered for error-level JSON:'; $logs = docker compose logs --tail=100 --no-color --no-log-prefix order-service; if ($LASTEXITCODE -ne 0) { throw 'Could not read Compose logs. Check whether Docker is running and the stack is available.' }; $logs | & $jq -c 'fromjson? | select(.level == \"error\")'; if ($LASTEXITCODE -ne 0) { throw 'Filtering the order-service Compose logs failed.' }",
+			"isBackground": false
+		},
+		{
+			"label": "Inspect jq filtering against service logs",
+			"type": "shell",
+			"command": "Set-Location 'D:\\Desktop\\AmaliTech-DEG-Project-based-challenges\\dev-ops\\WatchTower\\app'; $jq = Join-Path $env:LOCALAPPDATA 'Programs\\jq\\jq.exe'; Write-Output 'jq version:'; & $jq --version; Write-Output 'jq filter example:'; '{\"level\":\"error\",\"service\":\"order-service\",\"msg\":\"example error\"}' | & $jq -c 'select(.level == \"error\")'; if ($LASTEXITCODE -ne 0) { throw 'jq JSON filter example failed.' }; Write-Output 'Recent raw order-service logs:'; $logs = docker compose logs --tail=20 --no-color --no-log-prefix order-service; if ($LASTEXITCODE -ne 0) { throw 'Could not read Compose logs. Check Docker and stack status.' }; $logs; Write-Output 'Assessment filter against recent logs:'; $logs | & $jq -c 'fromjson? | select(.level == \"error\")'; if ($LASTEXITCODE -ne 0) { throw 'Assessment jq log filter failed.' }; Write-Output 'Direct JSON-object filter against recent logs:'; $logs | & $jq -c 'select(.level == \"error\")'; if ($LASTEXITCODE -ne 0) { throw 'Direct jq log filter failed.' }",
+			"isBackground": false
+		},
+		{
+			"label": "Verify jq against captured Compose logs",
+			"type": "shell",
+			"command": "Set-Location 'D:\\Desktop\\AmaliTech-DEG-Project-based-challenges\\dev-ops\\WatchTower\\app'; $jq = Join-Path $env:LOCALAPPDATA 'Programs\\jq\\jq.exe'; if (-not (Test-Path $jq)) { throw 'jq executable was not found.' }; Write-Output 'jq filter self-test:'; & $jq -n '{level:\"error\",service:\"order-service\",msg:\"example error\"} | select(.level == \"error\")'; if ($LASTEXITCODE -ne 0) { throw 'jq filter self-test failed.' }; $logFile = Join-Path $env:TEMP 'watchtower-order-service-jq-verification.txt'; try { Write-Output 'Capturing recent order-service logs:'; docker compose logs --tail=20 --no-color --no-log-prefix order-service | Out-File -FilePath $logFile -Encoding utf8; if ($LASTEXITCODE -ne 0) { throw 'Could not read Compose logs. Check Docker and stack status.' }; Get-Content -Path $logFile -TotalCount 5; Write-Output 'Applying the README filter:'; & $jq -c 'fromjson? | select(.level == \"error\")' $logFile; if ($LASTEXITCODE -ne 0) { throw 'README jq filter failed against captured logs.' }; Write-Output 'Applying direct JSON filter for comparison:'; & $jq -c 'select(.level == \"error\")' $logFile; if ($LASTEXITCODE -ne 0) { throw 'Direct jq filter failed against captured logs.' } } finally { Remove-Item -LiteralPath $logFile -ErrorAction SilentlyContinue }",
+			"isBackground": false
+		},
+		{
+			"label": "Run README jq filter on app logs",
+			"type": "shell",
+			"command": "Set-Location 'D:\\Desktop\\AmaliTech-DEG-Project-based-challenges\\dev-ops\\WatchTower\\app'; $jq = Join-Path $env:LOCALAPPDATA 'Programs\\jq\\jq.exe'; if (-not (Test-Path $jq)) { throw 'jq executable was not found.' }; $logFile = Join-Path $env:TEMP 'watchtower-order-service-jq-verification.txt'; $filterFile = Join-Path $env:TEMP 'watchtower-jq-filter-verification.jq'; try { Write-Output 'jq version:'; & $jq --version; if ($LASTEXITCODE -ne 0) { throw 'jq version check failed.' }; Write-Output 'Capturing recent order-service logs:'; docker compose logs --tail=20 --no-color --no-log-prefix order-service | Set-Content -LiteralPath $logFile -Encoding Ascii; if ($LASTEXITCODE -ne 0) { throw 'Could not read Compose logs. Check Docker and stack status.' }; Get-Content -LiteralPath $logFile -TotalCount 5; Set-Content -LiteralPath $filterFile -Value 'fromjson? | select(.level == \"error\")' -Encoding Ascii; Write-Output 'Running the README jq filter against actual logs:'; & $jq -c -f $filterFile $logFile; if ($LASTEXITCODE -ne 0) { throw 'README jq filter failed against captured logs.' }; Set-Content -LiteralPath $filterFile -Value 'select(.level == \"error\")' -Encoding Ascii; Write-Output 'Running a direct JSON-object filter for comparison:'; & $jq -c -f $filterFile $logFile; if ($LASTEXITCODE -ne 0) { throw 'Direct jq filter failed against captured logs.' } } finally { Remove-Item -LiteralPath $logFile, $filterFile -ErrorAction SilentlyContinue }",
+			"isBackground": false
+		},
+		{
+			"label": "Verify direct jq error filtering",
+			"type": "shell",
+			"command": "Set-Location 'D:\\Desktop\\AmaliTech-DEG-Project-based-challenges\\dev-ops\\WatchTower\\app'; $jq = Join-Path $env:LOCALAPPDATA 'Programs\\jq\\jq.exe'; $sample = Join-Path $env:TEMP 'watchtower-jq-error-sample.json'; try { Write-Output 'jq version:'; & $jq --version; if ($LASTEXITCODE -ne 0) { throw 'jq version check failed.' }; Set-Content -LiteralPath $sample -Value '{\"level\":\"error\",\"service\":\"order-service\",\"msg\":\"example error\"}' -Encoding Ascii; Write-Output 'Direct filter selects the expected JSON error record:'; & $jq -c 'select(.level == \"error\")' $sample; if ($LASTEXITCODE -ne 0) { throw 'Direct jq filter failed on the JSON test record.' }; Write-Output 'Direct filter against recent order-service logs (empty is expected if there are no errors):'; docker compose logs --tail=20 --no-color --no-log-prefix order-service | & $jq -c 'select(.level == \"error\")'; if ($LASTEXITCODE -ne 0) { throw 'Direct jq filter failed against order-service logs.' } } finally { Remove-Item -LiteralPath $sample -ErrorAction SilentlyContinue }",
+			"isBackground": false
+		},
+		{
+			"label": "Validate jq filter semantics",
+			"type": "shell",
+			"command": "Set-Location 'D:\\Desktop\\AmaliTech-DEG-Project-based-challenges\\dev-ops\\WatchTower\\app'; $jq = Join-Path $env:LOCALAPPDATA 'Programs\\jq\\jq.exe'; $sample = Join-Path $env:TEMP 'watchtower-jq-error-sample.json'; $logs = Join-Path $env:TEMP 'watchtower-order-service-jq-verification.txt'; $filter = Join-Path $env:TEMP 'watchtower-jq-filter-verification.jq'; try { Set-Content -LiteralPath $filter -Value 'select(.level == $level)' -Encoding Ascii; & $jq -n --arg level error --arg service order-service --arg msg 'example error' '{level:$level,service:$service,msg:$msg}' | Set-Content -LiteralPath $sample -Encoding Ascii; Write-Output 'Synthetic expected output:'; Get-Content -LiteralPath $sample; Write-Output 'Filtered synthetic JSON:'; & $jq -c --arg level error -f $filter $sample; if ($LASTEXITCODE -ne 0) { throw 'jq failed to filter the synthetic JSON record.' }; docker compose logs --tail=20 --no-color --no-log-prefix order-service | Set-Content -LiteralPath $logs -Encoding Ascii; if ($LASTEXITCODE -ne 0) { throw 'Could not retrieve recent order-service logs.' }; Write-Output 'Raw application log sample:'; Get-Content -LiteralPath $logs -TotalCount 3; Write-Output 'Filtered actual application logs (expected empty because current logs are info-level):'; & $jq -c --arg level error -f $filter $logs; if ($LASTEXITCODE -ne 0) { throw 'jq failed against the actual application logs.' } } finally { Remove-Item -LiteralPath $sample, $logs, $filter -ErrorAction SilentlyContinue }",
+			"isBackground": false
+		}
+	]
+}

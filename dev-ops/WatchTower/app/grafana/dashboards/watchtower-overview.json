@@ -26,7 +26,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "UP means Prometheus can scrape this service's /metrics endpoint; it indicates reachability, not an application-specific health check.",
+      "description": "Shows whether the service /health endpoint returned HTTP 200.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -89,7 +89,7 @@
       "pluginVersion": "11.0.0",
       "targets": [
         {
-          "expr": "up{job=\"order-service\"}",
+          "expr": "probe_success{job=\"service-health\", service=\"order-service\"}",
           "legendFormat": "order-service",
           "refId": "A"
         }
@@ -102,7 +102,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "UP means Prometheus can scrape this service's /metrics endpoint; it indicates reachability, not an application-specific health check.",
+      "description": "Shows whether the service /health endpoint returned HTTP 200.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -165,7 +165,7 @@
       "pluginVersion": "11.0.0",
       "targets": [
         {
-          "expr": "up{job=\"tracking-service\"}",
+          "expr": "probe_success{job=\"service-health\", service=\"tracking-service\"}",
           "legendFormat": "tracking-service",
           "refId": "A"
         }
@@ -178,7 +178,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "UP means Prometheus can scrape this service's /metrics endpoint; it indicates reachability, not an application-specific health check.",
+      "description": "Shows whether the service /health endpoint returned HTTP 200.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -241,7 +241,7 @@
       "pluginVersion": "11.0.0",
       "targets": [
         {
-          "expr": "up{job=\"notification-service\"}",
+          "expr": "probe_success{job=\"service-health\", service=\"notification-service\"}",
           "legendFormat": "notification-service",
           "refId": "A"
         }
