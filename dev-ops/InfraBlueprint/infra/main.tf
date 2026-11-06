@@ -9,7 +9,8 @@ terraform {
   }
 
   backend "s3" {
-    key = "vela-payments/terraform.tfstate"
+    key     = "vela-payments/terraform.tfstate"
+    encrypt = true
   }
 }
 
@@ -39,6 +40,12 @@ data "aws_ami" "amazon_linux_2023" {
     name   = "virtualization-type"
     values = ["hvm"]
   }
+}
+
+data "aws_rds_engine_version" "postgres_15" {
+  engine  = "postgres"
+  version = "15"
+  latest  = true
 }
 
 locals {
@@ -239,7 +246,7 @@ resource "aws_db_subnet_group" "main" {
 resource "aws_db_instance" "main" {
   identifier                 = "vela-payments-${local.environment}-db"
   engine                     = "postgres"
-  engine_version             = "15"
+  engine_version             = data.aws_rds_engine_version.postgres_15.version
   instance_class             = "db.t3.micro"
   allocated_storage          = 20
   username                   = var.db_username
@@ -271,6 +278,29 @@ resource "aws_s3_bucket_public_access_block" "assets" {
   block_public_policy     = true
   ignore_public_acls      = true
   restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_policy" "assets" {
+  bucket = aws_s3_bucket.assets.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Deny"
+      Principal = "*"
+      Action = [
+        "s3:GetObject",
+        "s3:PutObject"
+      ]
+      Resource = "${aws_s3_bucket.assets.arn}/*"
+      Condition = {
+        ArnNotEquals = {
+          "aws:PrincipalArn" = aws_iam_role.web.arn
+        }
+      }
+    }]
+  })
+
+  depends_on = [aws_s3_bucket_public_access_block.assets]
 }
 
 resource "aws_s3_bucket_versioning" "assets" {

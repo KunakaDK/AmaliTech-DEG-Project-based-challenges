@@ -34,6 +34,11 @@ variable "private_subnet_cidrs" {
 variable "allowed_ssh_cidr" {
   description = "Your IP address in CIDR notation allowed to SSH into the EC2 instance (e.g. 203.0.113.5/32)."
   type        = string
+
+  validation {
+    condition     = can(cidrhost(var.allowed_ssh_cidr, 0)) && endswith(var.allowed_ssh_cidr, "/32")
+    error_message = "allowed_ssh_cidr must be a valid IPv4 /32 CIDR for a single IP address."
+  }
 }
 
 variable "db_username" {
